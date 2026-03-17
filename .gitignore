@@ -1,0 +1,47 @@
+# =========================
+# 1. Project Specific (DO NOT UPLOAD DATA OR MODELS)
+# =========================
+# Ignore your massive medical dataset splits
+msd_split/
+data/
+
+# Ignore raw and processed medical images
+*.nii.gz
+*.npy
+*.npz
+
+# Ignore saved PyTorch model weights
+*.pth
+*.pt
+*.ckpt
+checkpoints/
+best_model*.pth
+
+# =========================
+# 2. Python Core (The compiled stuff we talked about)
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# =========================
+# 3. Virtual Environments
+# =========================
+venv/
+env/
+.env
+.venv/
+
+# =========================
+# 4. IDEs and OS Junk
+# =========================
+# VS Code
+.vscode/
+*.code-workspace
+
+# PyCharm / IntelliJ
+.idea/
+
+# macOS / Windows background files
+.DS_Store
+Thumbs.db
