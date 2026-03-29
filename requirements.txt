@@ -1,0 +1,28 @@
+# Core PyTorch setup
+torch>=2.0.0
+torchvision
+
+# Medical Imaging & Data processing
+batchgenerators==0.25.1
+batchgeneratorsv2==0.3.0
+acvl_utils==0.2.5
+SimpleITK==2.5.3
+blosc2==4.0.0
+nibabel
+dicom2nifti
+
+# Mamba Architecture
+mamba_ssm
+einops==0.8.2
+dynamic_network_architectures==0.4.3
+
+# Data Science & Utils
+numpy
+pandas
+scipy
+scikit-image
+scikit-learn
+matplotlib
+seaborn
+tqdm
+threadpoolctl
