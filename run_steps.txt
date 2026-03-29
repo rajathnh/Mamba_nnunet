@@ -1,0 +1,71 @@
+Create docker image:
+
+docker run --name mamba3-sandbox --gpus all -it --ipc=host --shm-size=8g \
+    -v ~/mamba_project/sandbox:/workspace \
+    pytorch/pytorch:2.11.0-cuda12.6-cudnn9-devel /bin/bash
+
+
+
+Install pacckages:
+
+apt-get update && apt-get install -y git ninja-build build-essential
+pip install packaging
+
+# The RTX 4050 RAM Leash
+export MAX_JOBS=2 
+
+pip install --no-build-isolation causal-conv1d>=1.4.0
+pip install --no-build-isolation mamba-ssm
+
+or 
+
+pip install packaging --break-system-packages
+
+export MAX_JOBS=2 
+
+pip install --no-build-isolation causal-conv1d>=1.4.0 --break-system-packages
+pip install --no-build-isolation mamba-ssm --break-system-packages
+
+
+(Install other packages from requirement.txt or run this command inside the workspace:
+pip install --break-system-packages \
+    batchgenerators \
+    batchgeneratorsv2 \
+    numpy \
+    scikit-learn \
+    dynamic-network-architectures \
+    acvl-utils \
+    tqdm \
+    pandas \
+    SimpleITK \
+    scipy \
+    threadpoolctl \
+    blosc2 \
+    einops \
+    matplotlib \
+    seaborn \
+    scikit-image)
+
+Run code:
+PYTHONPATH='/workspace' python pancreas_nnunet/run_mamba_training.py
+
+Preprocessing : 
+ d:\DBMS\venv\Scripts\python.exe -m nnunet_core.plan_and_preprocess_entrypoints -d 7  
+
+Running the code:
+python run_mammba_training.py
+File structure:
+mamba_project/
+└── sandbox/                          <-- (This is /workspace in Docker)
+    ├── 
+    └──pancreas_nnunet/
+        ├── nnunet_core/                 <-- (Replaced nnunetv2)
+        ├── preprocessing/
+        ├── imageio/
+        ├── training/
+        │   ├── models/
+        │   │   └── mamba_seg.py         <-- (Native Mamba3 code here)
+        │   └── trainer/
+        │       └── mamba_trainer.py     <-- (Trainer + Progress bar code here)
+        └── run_mamba_training.py
+       
