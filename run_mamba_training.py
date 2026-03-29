@@ -2,6 +2,8 @@ import torch
 import multiprocessing
 import os
 import argparse
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 from batchgenerators.utilities.file_and_folder_operations import load_json, join
 from training.trainer.mamba_trainer import MambaTrainer
 from paths import nnUNet_preprocessed, nnUNet_results
@@ -33,16 +35,18 @@ def run_training():
     # 3. Setup Smoke Test params
     if args.smoke_test:
         print("\n!!! SMOKE TEST MODE ACTIVE !!!")
-        trainer.num_epochs = 1
-        trainer.num_iterations_per_epoch = 10
-        trainer.num_val_iterations_per_epoch = 2
-        trainer.save_every = 1
+        trainer.num_epochs = 1000
+        trainer.initial_lr = 1e-4
+        trainer.num_iterations_per_epoch = 100
+        trainer.num_val_iterations_per_epoch = 20
+        trainer.save_every = 50
     else:
         # Standard training hparams
         trainer.num_epochs = 1000
         trainer.initial_lr = 1e-4  # Mamba often likes slightly lower LR than CNNs
         trainer.num_iterations_per_epoch = 250
         trainer.num_val_iterations_per_epoch = 50
+        trainer.save_every = 50
 
     # 4. Initialize and Run
     trainer.initialize()

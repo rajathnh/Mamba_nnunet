@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-
+from mamba_ssm import Mamba3
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. SS2D: 2D Selective Scan Module (Cross-Scan Core)
@@ -30,140 +30,61 @@ from einops import rearrange
 
 class SS2D(nn.Module):
     """
-    2D Selective State Space Model block.
-    Processes the image in 4 scan directions simultaneously:
-        1. Top-left  -> Bottom-right  (rows, forward)
-        2. Bottom-right -> Top-left    (rows, backward)
-        3. Top-right -> Bottom-left   (columns, forward transposed)
-        4. Bottom-left -> Top-right   (columns, backward transposed)
-    Results are merged by summing the unscanned outputs for full 2D context.
+    Hardware-Accelerated 2D Selective Scan Module.
+    Uses the official compiled C++ mamba_ssm kernel for massive VRAM savings 
+    and SRAM-optimized speed. 
     """
-
     def __init__(self, d_model: int, d_state: int = 16, d_conv: int = 3, expand: int = 2):
         super().__init__()
-        self.d_model = d_model
-        self.d_state = d_state
-        self.d_inner = int(expand * d_model)
-
-        # Input projection: splits into two branches (x and z for gating)
-        self.in_proj = nn.Linear(d_model, self.d_inner * 2, bias=False)
-
-        # Local context convolution (causal depthwise conv in the sequence dim)
-        self.conv2d = nn.Conv2d(
-            self.d_inner, self.d_inner,
-            kernel_size=d_conv, padding=d_conv // 2,
-            groups=self.d_inner, bias=True
+        
+        self.core = Mamba3(
+            d_model=d_model,
+            d_state=d_state,
+            expand=expand,
         )
-
-        self.act = nn.SiLU()
-
-        # SSM parameters — separate for each of the 4 scan directions
-        dt_rank = math.ceil(d_model / 16)
-        self.x_proj = nn.Linear(self.d_inner, dt_rank + d_state * 2, bias=False)
-        self.dt_proj = nn.Linear(dt_rank, self.d_inner, bias=True)
-
-        # A, B, C, D SSM matrices
-        A = torch.arange(1, d_state + 1, dtype=torch.float32).repeat(self.d_inner, 1)
-        self.A_log = nn.Parameter(torch.log(A))  # learned in log space for stability
-        self.D = nn.Parameter(torch.ones(self.d_inner))
-
-        # Output projection back to d_model
-        self.out_proj = nn.Linear(self.d_inner, d_model, bias=False)
-        self.norm = nn.LayerNorm(self.d_inner)
-
-    def ssm_scan(self, u: torch.Tensor) -> torch.Tensor:
-        """
-        Parallel prefix scan for the linear SSM recurrence h_t = dA_t*h_{t-1} + dB_t*u_t.
-
-        Uses log-space cumulative sum (torch.cumsum) instead of a Python for loop.
-        This runs O(log L) depth fully on the GPU, keeping GPU utilization near 100%
-        regardless of sequence length L = H*W.
-
-        Closed-form solution (log-space trick):
-            log_decay(t) = cumsum_{s=0..t}[ log(dA_s) ]          (prefix log-product of A)
-            h_t = exp(log_decay_t) * cumsum_{s=0..t}[ dB_s*u_s / exp(log_decay_s) ]
-        """
-        B, L, D = u.shape
-        dt_rank = math.ceil(self.d_model / 16)
-
-        x_dbl = self.x_proj(u)                         # (B, L, dt_rank+2*d_state)
-        dt, B_mat, C_mat = torch.split(x_dbl, [dt_rank, self.d_state, self.d_state], dim=-1)
-
-        dt = F.softplus(self.dt_proj(dt))               # (B, L, d_inner)
-        A = -torch.exp(self.A_log.float())              # (d_inner, d_state) — always negative
-
-        # ── Discretization ───────────────────────────────────────────────────
-        # log(dA) = dt * A  (using log(exp(x)) = x, avoids exp then log)
-        log_dA  = torch.einsum('bld,dn->bldn', dt, A)          # (B, L, d_inner, d_state)
-        dB_u    = torch.einsum('bld,bln->bldn', dt, B_mat) \
-                * u.unsqueeze(-1)                              # (B, L, d_inner, d_state)
-
-        # ── Parallel Log-Space Prefix Scan ───────────────────────────────────
-        # Step 1: prefix sum of log(dA) — equivalent to log(product of dA_0..dA_t)
-        log_decay = torch.cumsum(log_dA, dim=1)                # (B, L, d_inner, d_state)
-        decay     = torch.exp(log_decay)                       # (B, L, d_inner, d_state)
-
-        # Step 2: divide each input contribution by its accumulated decay factor
-        x_normalized = dB_u / (decay + 1e-12)                 # (B, L, d_inner, d_state)
-
-        # Step 3: parallel prefix sum of normalised contributions
-        x_cumsum = torch.cumsum(x_normalized, dim=1)           # (B, L, d_inner, d_state)
-
-        # Step 4: multiply back by decay to get h_t at each position
-        h = decay * x_cumsum                                   # (B, L, d_inner, d_state)
-
-        # ── y_t = C_t . h_t (sum over d_state) ──────────────────────────────
-        y = torch.einsum('bldn,bln->bld', h, C_mat)            # (B, L, d_inner)
-        y = y + u * self.D                                     # skip connection (D term)
-        return y
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        x: (B, H, W, d_model)  — spatial-last layout used by VSS block
+        x: (B, H, W, d_model)
         returns: (B, H, W, d_model)
         """
         B, H, W, C = x.shape
 
-        # Split into value branch and gate branch
-        xz = self.in_proj(x)                           # (B,H,W, 2*d_inner)
-        x_val, z = xz.chunk(2, dim=-1)                 # each (B,H,W,d_inner)
+        # ── 1. Create the 4 directional scans ──────────────────────────────
+        # Direction 1: Forward
+        s1 = x.view(B, H * W, C)
+        
+        # Direction 2: Backward
+        s2 = torch.flip(s1, dims=[1])
+        
+        # Direction 3: Transposed Forward (Column-major)
+        s3 = x.transpose(1, 2).reshape(B, H * W, C)
+        
+        # Direction 4: Transposed Backward
+        s4 = torch.flip(s3, dims=[1])
 
-        # Depthwise conv for local context (operates on the 2D spatial grid)
-        x_val = rearrange(x_val, 'b h w d -> b d h w')
-        x_val = self.act(self.conv2d(x_val))
-        x_val = rearrange(x_val, 'b d h w -> b h w d')
+        # ── 2. The Hardware Acceleration Trick ─────────────────────────────
+        # Instead of running a Python loop 4 times, we stack all 4 sequences 
+        # into the batch dimension. (e.g., Batch of 2 becomes Batch of 8).
+        # This forces the RTX 4050's CUDA cores to process all scans in parallel.
+        x_batched = torch.cat([s1, s2, s3, s4], dim=0)
 
-        # ── Cross-Scan: flatten in 4 directions ──────────────────────────────
-        # Direction 1: row-major forward  (top-left  -> bottom-right)
-        s1 = rearrange(x_val, 'b h w d -> b (h w) d')
-        # Direction 2: row-major backward (bottom-right -> top-left)
-        s2 = s1.flip(1)
-        # Direction 3: col-major forward  (top-right -> bottom-left)
-        s3 = rearrange(x_val, 'b h w d -> b (w h) d')
-        # Direction 4: col-major backward (bottom-left -> top-right)
-        s4 = s3.flip(1)
+        # FIRE THE C++ KERNEL
+        y_batched = self.core(x_batched)
 
-        # ── Run SSM scan independently on each sequence ───────────────────────
-        y1 = self.ssm_scan(s1)
-        y2 = self.ssm_scan(s2).flip(1)                 # re-flip so tokens align
-        y3 = self.ssm_scan(s3)
-        y4 = self.ssm_scan(s4).flip(1)
+        # ── 3. Unpack and Realign ──────────────────────────────────────────
+        # Split the batch back into 4 separate directional outputs
+        y1, y2, y3, y4 = torch.chunk(y_batched, 4, dim=0)
 
-        # ── Cross-Merge: rearrange column scans back to row-major and sum ─────
-        y3 = rearrange(y3, 'b (w h) d -> b (h w) d', h=H, w=W)
-        y4 = rearrange(y4, 'b (w h) d -> b (h w) d', h=H, w=W)
+        # Realign the tokens back to standard spatial layout
+        y2 = torch.flip(y2, dims=[1])
+        y3 = y3.view(B, W, H, C).transpose(1, 2).reshape(B, H * W, C)
+        y4 = torch.flip(y4, dims=[1]).view(B, W, H, C).transpose(1, 2).reshape(B, H * W, C)
 
-        y = y1 + y2 + y3 + y4                          # (B, H*W, d_inner)
-        y = self.norm(y)
-        y = rearrange(y, 'b (h w) d -> b h w d', h=H, w=W)
-
-        # Gating
-        y = y * self.act(z)
-
-        # Project back to d_model
-        y = self.out_proj(y)                            # (B, H, W, d_model)
-        return y
-
+        # ── 4. Cross-Merge ─────────────────────────────────────────────────
+        y = y1 + y2 + y3 + y4
+        
+        return y.view(B, H, W, C)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. VSS Block: Vision State Space Block
@@ -176,11 +97,11 @@ class VSSBlock(nn.Module):
     Pre-norm Vision State Space Block.
     Input/output shape: (B, H, W, C)
     """
-    def __init__(self, dim: int, d_state: int = 16, d_conv: int = 3,
+    def __init__(self, dim: int, d_state: int = 16,
                  expand: int = 2, mlp_ratio: float = 4.0, dropout: float = 0.0):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
-        self.ss2d = SS2D(dim, d_state=d_state, d_conv=d_conv, expand=expand)
+        self.ss2d = SS2D(dim, d_state=d_state, expand=expand)
 
         self.norm2 = nn.LayerNorm(dim)
         mlp_hidden = int(dim * mlp_ratio)

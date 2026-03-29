@@ -10,8 +10,8 @@ class MambaTrainer(nnUNetTrainer):
         
         # --- VRAM SAVER FOR RTX 4050 (6GB) ---
         # 1. Modify the raw dictionary BEFORE the base class builds its configuration manager
-        plans['configurations'][configuration]['batch_size'] = 2
-        plans['configurations'][configuration]['patch_size'] = [256,256] 
+        plans['configurations'][configuration]['batch_size'] = 8
+        plans['configurations'][configuration]['patch_size'] = [512,512] 
         
         # 2. Now initialize the base class with the updated plans!
         super().__init__(plans, configuration, fold, dataset_json, device)
@@ -119,3 +119,35 @@ class MambaTrainer(nnUNetTrainer):
             'fp_hard': fp.detach().cpu().numpy()[1:], 
             'fn_hard': fn.detach().cpu().numpy()[1:]
         }
+
+    def run_training(self):
+        import sys
+        self.on_train_start()
+
+        for epoch in range(self.current_epoch, self.num_epochs):
+            self.on_epoch_start()
+
+            self.on_train_epoch_start()
+            train_outputs = []
+            for batch_id in range(self.num_iterations_per_epoch):
+                train_outputs.append(self.train_step(next(self.dataloader_train)))
+                pct = ((batch_id + 1) / self.num_iterations_per_epoch) * 100
+                sys.stdout.write(f"\rEpoch {epoch} Train ({batch_id + 1}/{self.num_iterations_per_epoch}) - {pct:.1f}%")
+                sys.stdout.flush()
+            sys.stdout.write("\n")
+            self.on_train_epoch_end(train_outputs)
+
+            with torch.no_grad():
+                self.on_validation_epoch_start()
+                val_outputs = []
+                for batch_id in range(self.num_val_iterations_per_epoch):
+                    val_outputs.append(self.validation_step(next(self.dataloader_val)))
+                    pct = ((batch_id + 1) / self.num_val_iterations_per_epoch) * 100
+                    sys.stdout.write(f"\rEpoch {epoch} Val ({batch_id + 1}/{self.num_val_iterations_per_epoch}) - {pct:.1f}%")
+                    sys.stdout.flush()
+                sys.stdout.write("\n")
+                self.on_validation_epoch_end(val_outputs)
+
+            self.on_epoch_end()
+
+        self.on_train_end()
