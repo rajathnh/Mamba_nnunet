@@ -20,7 +20,7 @@ pancreas_nnunet_code = os.path.dirname(__file__)
 PLEASE READ documentation/setting_up_paths.md FOR INFORMATION TO HOW TO SET THIS UP
 """
 
-nnUNet_raw = r"E:\nnUNet_data\nnUNet_raw"
+nnUNet_raw = r"D:\nnUNet_data\nnUNet_raw"
 nnUNet_preprocessed = r"D:\nnUNet_data\nnUNet_preprocessed"
 nnUNet_results = r"D:\nnUNet_data\nnUNet_results"
 

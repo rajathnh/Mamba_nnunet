@@ -45,3 +45,9 @@ env/
 # macOS / Windows background files
 .DS_Store
 Thumbs.db
+error_log.txt
+error_log_2.txt
+error_log_3.txt
+error_log_4.txt
+error_log_5.txt
+error_log_6.txt

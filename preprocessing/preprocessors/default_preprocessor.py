@@ -338,7 +338,7 @@ class DefaultPreprocessor(object):
             scheme = configuration_manager.normalization_schemes[c]
             normalizer_class = recursive_find_python_class(join(pancreas_nnunet_code, "preprocessing", "normalization"),
                                                            scheme,
-                                                           'nnunetv2.preprocessing.normalization')
+                                                           'preprocessing.normalization')
             if normalizer_class is None:
                 raise RuntimeError(f'Unable to locate class \'{scheme}\' for normalization')
             normalizer = normalizer_class(use_mask_for_norm=configuration_manager.use_mask_for_norm[c],

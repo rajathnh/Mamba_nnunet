@@ -250,7 +250,7 @@ def get_labelmanager_class_from_plans(plans: dict) -> Type[LabelManager]:
     else:
         labelmanager_class = recursive_find_python_class(join(pancreas_nnunet_code, "utilities", "label_handling"),
                                                          plans['label_manager'],
-                                                         current_module="nnunetv2.utilities.label_handling")
+                                                         current_module="utilities.label_handling")
         return labelmanager_class
 
 

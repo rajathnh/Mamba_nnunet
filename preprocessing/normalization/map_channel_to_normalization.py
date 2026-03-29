@@ -1,6 +1,6 @@
 from typing import Type
 
-from normalization.default_normalization_schemes import CTNormalization, NoNormalization, ImageNormalization
+from preprocessing.normalization.default_normalization_schemes import CTNormalization, NoNormalization, ImageNormalization
 
 channel_name_to_normalization_mapping = {
     'ct': CTNormalization,

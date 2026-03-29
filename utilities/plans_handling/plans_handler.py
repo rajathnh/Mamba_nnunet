@@ -104,7 +104,7 @@ class ConfigurationManager(object):
     def preprocessor_class(self) -> Type[DefaultPreprocessor]:
         preprocessor_class = recursive_find_python_class(join(pancreas_nnunet_code, "preprocessing"),
                                                          self.preprocessor_name,
-                                                         current_module="nnunetv2.preprocessing")
+                                                         current_module="preprocessing")
         return preprocessor_class
 
     @property
@@ -290,9 +290,9 @@ class PlansManager(object):
     @lru_cache(maxsize=1)
     def experiment_planner_class(self) -> Type[ExperimentPlanner]:
         planner_name = self.experiment_planner_name
-        experiment_planner = recursive_find_python_class(join(pancreas_nnunet_code, "experiment_planning"),
+        experiment_planner = recursive_find_python_class(join(pancreas_nnunet_code, "nnunet_core"),
                                                          planner_name,
-                                                         current_module="nnunetv2.experiment_planning")
+                                                         current_module="nnunet_core")
         return experiment_planner
 
     @property

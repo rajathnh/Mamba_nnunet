@@ -64,9 +64,9 @@ def determine_reader_writer_from_file_ending(file_ending: str, example_file: str
 
 
 def recursive_find_reader_writer_by_name(rw_class_name: str) -> Type[BaseReaderWriter]:
-    ret = recursive_find_python_class(join(pancreas_nnunet_code, "imageio"), rw_class_name, 'nnunetv2.imageio')
+    ret = recursive_find_python_class(join(pancreas_nnunet_code, "imageio"), rw_class_name, 'imageio')
     if ret is None:
         raise RuntimeError("Unable to find reader writer class '%s'. Please make sure this class is located in the "
-                           "nnunetv2.imageio module." % rw_class_name)
+                           "imageio module." % rw_class_name)
     else:
         return ret

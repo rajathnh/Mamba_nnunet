@@ -36,9 +36,9 @@ def extract_fingerprints(dataset_ids: List[int], fingerprint_extractor_class_nam
     clean = False will not actually run this. This is just a switch for use with nnUNetv2_plan_and_preprocess where
     we don't want to rerun fingerprint extraction every time.
     """
-    fingerprint_extractor_class = recursive_find_python_class(join(pancreas_nnunet_code, "experiment_planning"),
+    fingerprint_extractor_class = recursive_find_python_class(join(pancreas_nnunet_code, "nnunet_core"),
                                                               fingerprint_extractor_class_name,
-                                                              current_module="nnunetv2.experiment_planning")
+                                                              current_module="nnunet_core")
     for d in dataset_ids:
         extract_fingerprint_dataset(d, fingerprint_extractor_class, num_processes, check_dataset_integrity, clean,
                                     verbose)
@@ -82,9 +82,9 @@ def plan_experiments(dataset_ids: List[int], experiment_planner_class_name: str 
               "Please consider using those instead! "
               "Read more here: https://github.com/MIC-DKFZ/nnUNet/blob/master/documentation/resenc_presets.md"
               "\n############################\n")
-    experiment_planner = recursive_find_python_class(join(pancreas_nnunet_code, "experiment_planning"),
+    experiment_planner = recursive_find_python_class(join(pancreas_nnunet_code, "nnunet_core"),
                                                      experiment_planner_class_name,
-                                                     current_module="nnunetv2.experiment_planning")
+                                                     current_module="nnunet_core")
     plans_identifier = None
     for d in dataset_ids:
         _, plans_identifier = plan_experiment_dataset(d, experiment_planner, gpu_memory_target_in_gb,
